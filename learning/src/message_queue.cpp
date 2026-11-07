@@ -1,9 +1,9 @@
+#include <condition_variable>
 #include <iostream>
 #include <mutex>
 #include <optional>
 #include <thread>
 #include <vector>
-#include <mutex>
 
 #include <gtest/gtest.h>
 
@@ -14,16 +14,18 @@ struct Message {
 class MessageQueue {
 public:
     void push(Message message) {
-        std::lock_guard<std::mutex> lock(mx_);
-        queue_.push_back(std::move(message));
+        {
+            std::lock_guard<std::mutex> lock(mx_);
+            queue_.push_back(std::move(message));
+        }
+
+        cv_.notify_one();
     }
 
     std::optional<Message> pop() {
-        std::lock_guard lock(mx_);
+        std::unique_lock<std::mutex> lock(mx_);
 
-        if (queue_.empty()) {
-            return std::nullopt;
-        }
+        cv_.wait(lock, [this]() { return !queue_.empty(); });
 
         Message message = queue_.back();
         queue_.pop_back();
@@ -37,6 +39,7 @@ public:
 
 private:
     mutable std::mutex mx_;
+    std::condition_variable cv_;
     std::vector<Message> queue_;
 };
 

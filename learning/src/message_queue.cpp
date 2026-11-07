@@ -1,4 +1,5 @@
 #include <condition_variable>
+#include <deque>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -35,8 +36,8 @@ public:
             return std::nullopt;
         }
 
-        Message message = queue_.back();
-        queue_.pop_back();
+        Message message = queue_.front();
+        queue_.pop_front();
         return message;
     }
 
@@ -58,7 +59,7 @@ private:
     bool shutdown_{false};
     mutable std::mutex mx_;
     std::condition_variable cv_;
-    std::vector<Message> queue_;
+    std::deque<Message> queue_;
 };
 
 void PushMessages(MessageQueue& mq, size_t count) {

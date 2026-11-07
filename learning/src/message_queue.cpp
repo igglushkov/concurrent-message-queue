@@ -13,19 +13,27 @@ struct Message {
 
 class MessageQueue {
 public:
-    void push(Message message) {
+    bool push(Message message) {
         {
             std::lock_guard<std::mutex> lock(mx_);
+            if (shutdown_) {
+                return false;
+            }
             queue_.push_back(std::move(message));
         }
 
         cv_.notify_one();
+        return true;
     }
 
     std::optional<Message> pop() {
         std::unique_lock<std::mutex> lock(mx_);
 
-        cv_.wait(lock, [this]() { return !queue_.empty(); });
+        cv_.wait(lock, [this]() { return !queue_.empty() || shutdown_; });
+
+        if (queue_.empty()) {
+            return std::nullopt;
+        }
 
         Message message = queue_.back();
         queue_.pop_back();
@@ -37,7 +45,17 @@ public:
         return queue_.size();
     }
 
+    void shutdown() {
+        {
+            std::lock_guard<std::mutex> lock(mx_);
+            shutdown_ = true;
+        }
+
+        cv_.notify_all();
+    }
+
 private:
+    bool shutdown_{false};
     mutable std::mutex mx_;
     std::condition_variable cv_;
     std::vector<Message> queue_;

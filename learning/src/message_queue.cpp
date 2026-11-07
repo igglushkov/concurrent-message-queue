@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <mutex>
 
 #include <gtest/gtest.h>
 
@@ -9,14 +10,17 @@ struct Message {};
 class MessageQueue {
 public:
     void push(Message message) {
+        std::lock_guard<std::mutex> lock(mx_);
         queue_.push_back(std::move(message));
     }
 
     size_t size() const {
+        std::lock_guard<std::mutex> lock(mx_);
         return queue_.size();
     }
 
 private:
+    mutable std::mutex mx_;
     std::vector<Message> queue_;
 };
 

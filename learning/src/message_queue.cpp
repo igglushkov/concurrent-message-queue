@@ -49,10 +49,17 @@ public:
     void shutdown() {
         {
             std::lock_guard<std::mutex> lock(mx_);
+            if (shutdown_) {
+                return;
+            }
             shutdown_ = true;
         }
-
         cv_.notify_all();
+    }
+
+    bool is_enabled() const {
+        std::lock_guard<std::mutex> lock(mx_);
+        return !shutdown_;
     }
 
 private:
@@ -74,6 +81,33 @@ void PopMessages(MessageQueue& mq, size_t count) {
             return;
         };
     }
+}
+
+void ShutDown(MessageQueue& mq, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        mq.shutdown();
+    }
+}
+
+TEST(MessageQueue, Shutdown) {
+    MessageQueue mq;
+    std::vector<std::thread> producers;
+    const size_t n_threads = 4;
+    const size_t k_message_count = 10000;
+
+    for (size_t i = 0; i < n_threads / 2; i++) {
+        producers.emplace_back(PushMessages, std::ref(mq), k_message_count);
+    }
+    const unsigned k_shutdown_count = 100;
+    for (size_t i = 0; i < n_threads / 2; i++) {
+        producers.emplace_back(ShutDown, std::ref(mq), k_shutdown_count);
+    }
+
+    for (auto&& producer : producers) {
+        producer.join();
+    }
+
+    ASSERT_FALSE(mq.is_enabled());
 }
 
 TEST(MessageQueue, Push) {

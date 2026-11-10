@@ -16,13 +16,15 @@ struct Message {
 template <typename T>
 class MessageQueue {
 public:
-    bool push(T message) {
+
+    template <typename U>
+    bool push(U&& message) {
         {
             std::lock_guard<std::mutex> lock(mx_);
             if (shutdown_) {
                 return false;
             }
-            queue_.push_back(std::move(message));
+            queue_.push_back(std::forward<U>(message));
         }
 
         cv_.notify_one();

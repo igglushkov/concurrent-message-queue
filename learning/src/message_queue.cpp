@@ -12,9 +12,11 @@ struct Message {
     size_t id{};
 };
 
+
+template <typename T>
 class MessageQueue {
 public:
-    bool push(Message message) {
+    bool push(T message) {
         {
             std::lock_guard<std::mutex> lock(mx_);
             if (shutdown_) {
@@ -27,7 +29,7 @@ public:
         return true;
     }
 
-    std::optional<Message> pop() {
+    std::optional<T> pop() {
         std::unique_lock<std::mutex> lock(mx_);
 
         cv_.wait(lock, [this]() { return !queue_.empty() || shutdown_; });
@@ -36,7 +38,7 @@ public:
             return std::nullopt;
         }
 
-        Message message = queue_.front();
+        auto message = queue_.front();
         queue_.pop_front();
         return message;
     }
@@ -53,7 +55,7 @@ public:
                 return;
             }
             shutdown_ = true;
-        }
+        }   
         cv_.notify_all();
     }
 
@@ -66,16 +68,18 @@ private:
     bool shutdown_{false};
     mutable std::mutex mx_;
     std::condition_variable cv_;
-    std::deque<Message> queue_;
+    std::deque<T> queue_;
 };
 
-void PushMessages(MessageQueue& mq, size_t count) {
+template <typename T>
+void PushMessages(MessageQueue<T>& mq, size_t count) {
     for (size_t i = 0; i < count; i++) {
         mq.push(Message{.id = i});
     }
 }
 
-void PopMessages(MessageQueue& mq, size_t count) {
+template <typename T>
+void PopMessages(MessageQueue<T>& mq, size_t count) {
     for (size_t i = 0; i < count; i++) {
         if (mq.pop() == std::nullopt) {
             return;
@@ -83,24 +87,25 @@ void PopMessages(MessageQueue& mq, size_t count) {
     }
 }
 
-void ShutDown(MessageQueue& mq, size_t count) {
+template <typename T>
+void ShutDown(MessageQueue<T>& mq, size_t count) {
     for (size_t i = 0; i < count; i++) {
         mq.shutdown();
     }
 }
 
 TEST(MessageQueue, Shutdown) {
-    MessageQueue mq;
+    MessageQueue<Message> mq;
     std::vector<std::thread> producers;
     const size_t n_threads = 4;
     const size_t k_message_count = 10000;
 
     for (size_t i = 0; i < n_threads / 2; i++) {
-        producers.emplace_back(PushMessages, std::ref(mq), k_message_count);
+        producers.emplace_back(PushMessages<Message>, std::ref(mq), k_message_count);
     }
     const unsigned k_shutdown_count = 100;
     for (size_t i = 0; i < n_threads / 2; i++) {
-        producers.emplace_back(ShutDown, std::ref(mq), k_shutdown_count);
+        producers.emplace_back(ShutDown<Message>, std::ref(mq), k_shutdown_count);
     }
 
     for (auto&& producer : producers) {
@@ -111,12 +116,12 @@ TEST(MessageQueue, Shutdown) {
 }
 
 TEST(MessageQueue, Push) {
-    MessageQueue mq;
+    MessageQueue<Message> mq;
     std::vector<std::thread> producers;
     const size_t n_threads = 4;
     const size_t k_message_count = 10'000;
     for (size_t i = 0; i < n_threads; i++) {
-        producers.emplace_back(PushMessages, std::ref(mq), k_message_count);
+        producers.emplace_back(PushMessages<Message>, std::ref(mq), k_message_count);
     }
 
     for (auto&& p : producers) {
@@ -127,13 +132,13 @@ TEST(MessageQueue, Push) {
 }
 
 TEST(MessageQueue, Pop) {
-    MessageQueue mq;
+    MessageQueue<Message> mq;
     std::vector<std::thread> threads;
     const size_t n_threads = 4;
     const size_t k_message_count = 5000;
     for (size_t i = 0; i < n_threads; i++) {
-        threads.emplace_back(PushMessages, std::ref(mq), k_message_count);
-        threads.emplace_back(PopMessages, std::ref(mq), k_message_count);
+        threads.emplace_back(PushMessages<Message>, std::ref(mq), k_message_count);
+        threads.emplace_back(PopMessages<Message>, std::ref(mq), k_message_count);
     }
 
     for (auto&& p : threads) {
